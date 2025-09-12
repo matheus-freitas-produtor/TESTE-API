@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>AI-Coustics Audio Enhancer</title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#f2f2f2; text-align:center; padding:40px; }
+    #dropZone { border:2px dashed #555; border-radius:10px; padding:40px; background:#fff; cursor:pointer; }
+    #dropZone.hover { border-color:#007BFF; background:#eef6ff; }
+    #status { margin-top:20px; font-weight:bold; }
+    #downloadBtn { display:none; margin-top:20px; padding:10px 20px; font-size:16px; cursor:pointer; }
+    #playerContainer { display:none; margin-top:30px; }
+    audio { margin:10px; width:80%; }
+    /* Modal */
+    #paramModal { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); }
+    #paramModal .modal-content { background:#fff; padding:20px; margin:10% auto; width:300px; border-radius:10px; text-align:left; }
+    label { display:block; margin-top:10px; font-size:14px; }
+    input, select { width:100%; padding:6px; margin-top:5px; }
+    button { padding:10px 20px; border:none; border-radius:5px; background:#007BFF; color:#fff; cursor:pointer; margin-top:15px; }
+    button:hover { background:#0056b3; }
+    /* Progress bar */
+    #progressContainer { display:none; margin-top:20px; width:80%; background:#ddd; border-radius:5px; overflow:hidden; margin-left:auto; margin-right:auto; }
+    #progressBar { width:0%; height:20px; background:#007BFF; transition:width 0.5s; }
+    .error { color:red; margin-top:10px; font-weight:bold; }
+  </style>
+</head>
+<body>
+  <h1>🎵 AI-Coustics Audio Enhancer</h1>
+  <div id="dropZone">Clique ou arraste um arquivo de áudio aqui</div>
+  <div id="status"></div>
+  <div id="progressContainer"><div id="progressBar"></div></div>
+  <div id="playerContainer">
+    <h3>🔊 Compare</h3>
+    <p>Antes:</p>
+    <audio id="originalPlayer" controls></audio>
+    <p>Depois:</p>
+    <audio id="enhancedPlayer" controls></audio>
+  </div>
+  <a id="downloadBtn" download="enhanced_audio.mp3">⬇️ Baixar Áudio Melhorado</a>
+
+  <!-- Modal de parâmetros -->
+  <div id="paramModal">
+    <div class="modal-content">
+      <h3>Configurações</h3>
+      <label>Nível de Enhancement (0-100)</label>
+      <input type="number" id="enhancement_level" value="100" min="0" max="100">
+      <label>Loudness Target (LUFS)</label>
+      <input type="number" id="loudness_target" value="-14" min="-70" max="-5">
+      <label>True Peak (dBTP)</label>
+      <input type="number" id="true_peak" value="-1" min="-9" max="0">
+      <label>Modelo</label>
+      <select id="enhancement_model">
+        <option value="LARK_V2">LARK_V2</option>
+        <option value="LARK">LARK</option>
+        <option value="FINCH">FINCH</option>
+      </select>
+      <label>Formato</label>
+      <select id="transcode">
+        <option value="MP3">MP3</option>
+        <option value="WAV">WAV</option>
+      </select>
+      <button id="applyParams">Concluir</button>
+    </div>
+  </div>
+
+<script>
+const API_KEY = "7492532c603370eb39fe3dcc5afcd8ddfe707f3adef3b1f49f32b829075d829c";
+const API_URL = "https://api.ai-coustics.io/v2/medias";
+let selectedFile = null;
+let mediaUid = null;
+
+const dropZone = document.getElementById("dropZone");
+const statusDiv = document.getElementById("status");
+const downloadBtn = document.getElementById("downloadBtn");
+const modal = document.getElementById("paramModal");
+const applyParamsBtn = document.getElementById("applyParams");
+const progressContainer = document.getElementById("progressContainer");
+const progressBar = document.getElementById("progressBar");
+const playerContainer = document.getElementById("playerContainer");
+const originalPlayer = document.getElementById("originalPlayer");
+const enhancedPlayer = document.getElementById("enhancedPlayer");
+
+dropZone.addEventListener("click", () => {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "audio/*";
+  input.onchange = e => { selectedFile = e.target.files[0]; if (selectedFile) openModal(); };
+  input.click();
+});
+dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("hover"); });
+dropZone.addEventListener("dragleave", () => dropZone.classList.remove("hover"));
+dropZone.addEventListener("drop", e => {
+  e.preventDefault();
+  dropZone.classList.remove("hover");
+  if (e.dataTransfer.files.length > 0) {
+    selectedFile = e.dataTransfer.files[0];
+    openModal();
+  }
+});
+
+function openModal() { modal.style.display = "block"; }
+applyParamsBtn.addEventListener("click", () => {
+  modal.style.display = "none";
+  uploadFile();
+});
+
+async function uploadFile() {
+  if (!selectedFile) return alert("Nenhum arquivo selecionado.");
+  statusDiv.innerText = "⏳ Enviando arquivo...";
+  progressContainer.style.display = "none";
+  playerContainer.style.display = "none";
+  downloadBtn.style.display = "none";
+
+  const params = {
+    loudness_target: parseInt(document.getElementById("loudness_target").value),
+    true_peak: parseInt(document.getElementById("true_peak").value),
+    enhancement_level: parseInt(document.getElementById("enhancement_level").value),
+    enhancement_model: document.getElementById("enhancement_model").value,
+    transcode: document.getElementById("transcode").value
+  };
+
+  const formData = new FormData();
+  formData.append("file", selectedFile);
+  formData.append("media_enhancement", JSON.stringify(params));
+
+  try {
+    const resp = await fetch(API_URL, {
+      method: "POST",
+      headers: { "X-API-Key": API_KEY },
+      body: formData
+    });
+    if (!resp.ok) {
+      const errText = await resp.text();
+      throw new Error(`Upload failed: ${resp.status} ${errText}`);
+    }
+    const data = await resp.json();
+    console.log("Upload response:", data);
+    mediaUid = data.uid;
+    if (!mediaUid) { statusDiv.innerText = "❌ Erro no upload"; return; }
+
+    // Prévia do áudio original
+    originalPlayer.src = URL.createObjectURL(selectedFile);
+
+    statusDiv.innerText = "📡 Processando...";
+    progressContainer.style.display = "block";
+    simulateProgress();
+    pollStatus();
+  } catch (err) {
+    handleError(err);
+  }
+}
+
+function simulateProgress() {
+  progressBar.style.width = "0%";
+  let width = 0;
+  const interval = setInterval(() => {
+    if (width >= 90) { clearInterval(interval); return; } // espera o backend
+    width += 5;
+    progressBar.style.width = width + "%";
+  }, 1000);
+}
+
+async function pollStatus() {
+  try {
+    const resp = await fetch(`${API_URL}/${mediaUid}/metadata`, {
+      headers: { "X-API-Key": API_KEY }
+    });
+    const data = await resp.json();
+    console.log("Metadata:", data);
+    if (data.enhancement_status === "COMPLETED") {
+      statusDiv.innerText = "✅ Pronto!";
+      progressBar.style.width = "100%";
+
+      // Baixar arquivo processado como blob
+      const fileResp = await fetch(`${API_URL}/${mediaUid}/file?step=ENHANCED`, {
+        headers: { "X-API-Key": API_KEY }
+      });
+      if (!fileResp.ok) throw new Error("Erro ao baixar áudio processado");
+      const blob = await fileResp.blob();
+      const url = window.URL.createObjectURL(blob);
+
+      // Player e botão de download
+      enhancedPlayer.src = url;
+      playerContainer.style.display = "block";
+      downloadBtn.href = url;
+      downloadBtn.download = "enhanced_audio." + (document.getElementById("transcode").value).toLowerCase();
+      downloadBtn.style.display = "inline-block";
+    } else if (data.enhancement_status === "FAILED") {
+      statusDiv.innerText = "❌ O processamento falhou";
+    } else {
+      statusDiv.innerText = "⏳ Status: " + data.enhancement_status;
+      setTimeout(pollStatus, 4000);
+    }
+  } catch (err) {
+    handleError(err);
+    setTimeout(pollStatus, 5000);
+  }
+}
+
+function handleError(err) {
+  console.error(err);
+  let msg = "❌ Erro desconhecido.";
+  if (err.message.includes("413")) msg = "❌ Arquivo muito grande (máx 512MB).";
+  else if (err.message.includes("415")) msg = "❌ Formato não suportado.";
+  else if (err.message.includes("401")) msg = "❌ API Key inválida.";
+  else if (err.message.includes("403")) msg = "❌ Acesso negado.";
+  else if (err.message.includes("404")) msg = "❌ Arquivo não encontrado.";
+  statusDiv.innerHTML = `<div class="error">${msg}</div>`;
+}
+</script>
+</body>
+</html>
