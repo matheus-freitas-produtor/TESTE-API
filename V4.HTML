@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI-Coustics Audio Enhancer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- WaveSurfer.js para visualização da waveform -->
+  <script src="https://unpkg.com/wavesurfer.js@7"></script>
+  <style>
+    /* --- Váriaveis de Cores e Estilo Geral --- */
+    :root {
+      --background-color: #0a0a0a;
+      --primary-text-color: #e0e0e0;
+      --secondary-text-color: #a0a0a0;
+      --accent-color: #00BFFF;
+      --accent-color-dark: #1E90FF;
+      --surface-color: rgba(30, 30, 30, 0.5);
+      --border-color: rgba(255, 255, 255, 0.1);
+      --error-color: #FF4747;
+      --shadow-color-light: rgba(0, 191, 255, 0.5);
+      --shadow-color-dark: rgba(0, 191, 255, 0.2);
+    }
+
+    /* --- Animações --- */
+    @keyframes move-twinkle-back {
+      from { background-position: 0 0; }
+      to { background-position: -10000px 5000px; }
+    }
+    @keyframes fadeIn { from { opacity: 0; transform: scale(0.95) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+    @keyframes fadeOut { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(0.95); } }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 var(--shadow-color-dark); }
+      70% { box-shadow: 0 0 10px 15px rgba(0, 191, 255, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(0, 191, 255, 0); }
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--background-color);
+      color: var(--primary-text-color);
+      text-align: center;
+      padding: 20px;
+      overflow-x: hidden;
+      margin: 0;
+    }
+
+    .stars, .twinkling {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      width: 100%; height: 100%;
+      display: block;
+    }
+    .stars {
+      background: #000 url(https://www.script-tutorials.com/demos/360/images/stars.png) repeat top center;
+      z-index: -2;
+    }
+    .twinkling {
+      background: transparent url(https://www.script-tutorials.com/demos/360/images/twinkling.png) repeat top center;
+      z-index: -1;
+      animation: move-twinkle-back 200s linear infinite;
+    }
+    
+    .content-wrapper {
+      position: relative;
+      z-index: 1;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      animation: fadeIn 1s ease-out forwards;
+    }
+
+    .main-title {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 15px;
+        font-size: clamp(1.8rem, 5vw, 2.5rem);
+        font-weight: 700;
+        text-shadow: 0 0 10px var(--shadow-color-light);
+        letter-spacing: 1.5px;
+        margin-bottom: 30px;
+        color: #fff;
+    }
+    .main-title svg {
+        width: clamp(30px, 6vw, 45px);
+        height: auto;
+        fill: currentColor;
+        filter: drop-shadow(0 0 5px var(--shadow-color-light));
+    }
+
+    /* --- Zona de Upload --- */
+    #dropZone {
+      border: 2px dashed var(--border-color);
+      border-radius: 20px;
+      padding: 60px 30px;
+      background: var(--surface-color);
+      backdrop-filter: blur(10px);
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+      font-size: 1.1em;
+      color: var(--secondary-text-color);
+    }
+    #dropZone.hover {
+      border-color: var(--accent-color);
+      background: rgba(0, 191, 255, 0.1);
+      box-shadow: 0 0 20px var(--shadow-color-dark);
+      transform: scale(1.03);
+    }
+    #dropZone.processing {
+        animation: pulse 2s infinite;
+        cursor: not-allowed;
+    }
+
+    /* --- Status, Players e Progresso --- */
+    #status {
+      margin-top: 25px;
+      font-weight: 500;
+      font-size: 1.1em;
+      min-height: 25px;
+      transition: color 0.3s ease;
+    }
+
+    #playerContainer {
+      /* Estilo inicial modificado para garantir que esteja oculto */
+      display: none; 
+      margin-top: 30px;
+      background: var(--surface-color);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      padding: 20px 30px;
+      border: 1px solid var(--border-color);
+      flex-direction: column;
+      gap: 15px;
+    }
+    
+    .audio-display {
+        margin: 15px 0;
+    }
+
+    .audio-player-wrapper {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        width: 100%;
+    }
+
+    .audio-display h4 {
+        margin: 0 0 15px 0;
+        font-weight: 500;
+        color: var(--secondary-text-color);
+        font-size: 1.1rem;
+    }
+    
+    .waveform-container {
+        flex-grow: 1;
+    }
+    
+    .play-button {
+        flex-shrink: 0;
+        background-color: rgba(0,0,0,0.5);
+        border: 2px solid var(--primary-text-color);
+        color: var(--primary-text-color);
+        border-radius: 50%;
+        width: 45px;
+        height: 45px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s ease;
+    }
+    .play-button:hover {
+        background-color: var(--accent-color);
+        border-color: var(--accent-color);
+        transform: scale(1.1);
+    }
+    .play-button svg {
+        width: 20px;
+        height: 20px;
+        fill: currentColor;
+    }
+    #playIconOriginal, #playIconEnhanced { margin-left: 3px; }
+
+    #progressContainer {
+      display: none;
+      margin: 20px auto;
+      width: 90%;
+      max-width: 600px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid var(--border-color);
+    }
+
+    #progressBar {
+      width: 0%;
+      height: 24px;
+      background: linear-gradient(90deg, var(--accent-color-dark), var(--accent-color));
+      transition: width 0.5s ease-out;
+      box-shadow: 0 0 10px var(--accent-color-dark);
+    }
+
+    .error { color: var(--error-color); text-shadow: 0 0 5px var(--error-color); }
+
+    .results-buttons {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 15px;
+    }
+
+    /* --- Botão de Download --- */
+    #downloadBtn {
+      opacity: 0;
+      transform: translateY(10px);
+      pointer-events: none;
+      padding: 14px 30px;
+      font-size: 1em;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      color: #fff;
+      background: transparent;
+      border: 2px solid var(--accent-color);
+      border-radius: 12px;
+      transition: all 0.3s ease, opacity 0.4s ease, transform 0.4s ease;
+      text-shadow: 0 0 5px var(--accent-color);
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    #downloadBtn.visible {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+
+    #downloadBtn:hover {
+      background: var(--accent-color);
+      color: var(--background-color);
+      box-shadow: 0 0 25px var(--accent-color);
+      transform: translateY(-3px);
+      text-shadow: none;
+    }
+    #downloadBtn svg { width: 18px; height: 18px; }
+
+    #resetBtn {
+      opacity: 0;
+      transform: translateY(10px);
+      pointer-events: none;
+      padding: 14px 30px;
+      font-size: 1em;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      color: var(--accent-color);
+      background: transparent;
+      border: 2px solid var(--accent-color);
+      border-radius: 12px;
+      transition: all 0.3s ease, opacity 0.4s ease, transform 0.4s ease;
+    }
+    #resetBtn.visible {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+    #resetBtn:hover {
+      background: var(--accent-color);
+      color: var(--background-color);
+      box-shadow: 0 0 25px var(--accent-color);
+    }
+
+    /* --- Estilo do Modal --- */
+    #paramModal {
+      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(5px);
+      z-index: 100;
+      opacity: 0;
+      transition: opacity 0.4s ease;
+      align-items: center; justify-content: center;
+    }
+    #paramModal.visible { opacity: 1; display: flex; }
+    #paramModal .modal-content {
+      background: rgba(20, 20, 20, 0.9);
+      backdrop-filter: blur(15px);
+      padding: 30px 35px;
+      width: 90%;
+      max-width: 420px;
+      border-radius: 20px;
+      text-align: left;
+      border: 1px solid var(--border-color);
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+      animation-duration: 0.4s;
+      animation-timing-function: ease-out;
+    }
+    #paramModal.visible .modal-content { animation-name: fadeIn; }
+    #paramModal.hidden .modal-content { animation-name: fadeOut; }
+    #paramModal h3 {
+        text-align: center;
+        margin-top: 0;
+        margin-bottom: 25px;
+        font-weight: 600;
+    }
+    .param-group { margin-bottom: 20px; }
+    .param-group label {
+      display: flex; justify-content: space-between;
+      margin-bottom: 12px; font-size: 14px;
+      font-weight: 400; color: var(--secondary-text-color);
+    }
+    .param-group output { font-weight: 600; color: var(--primary-text-color); }
+    input[type="range"] {
+        -webkit-appearance: none; appearance: none;
+        width: 100%; height: 6px;
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 5px; cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none; appearance: none;
+        width: 20px; height: 20px;
+        background: var(--primary-text-color); border-radius: 50%;
+        border: 3px solid var(--accent-color);
+        transition: transform 0.2s ease;
+    }
+    input[type="range"]::-moz-range-thumb {
+        width: 16px; height: 16px;
+        background: var(--primary-text-color); border-radius: 50%;
+        border: 3px solid var(--accent-color);
+    }
+    input[type="range"]:hover::-webkit-slider-thumb { transform: scale(1.2); }
+    
+    select {
+      width: 100%; padding: 12px;
+      margin-top: 8px; background: rgba(255, 255, 255, 0.1);
+      border: 1px solid var(--border-color); border-radius: 8px;
+      color: var(--primary-text-color); font-family: 'Inter', sans-serif;
+      box-sizing: border-box; transition: all 0.3s ease;
+      font-size: 1em;
+    }
+    input:focus, select:focus {
+      outline: none; border-color: var(--accent-color);
+      box-shadow: 0 0 10px var(--shadow-color-dark);
+    }
+
+    button#applyParams {
+      padding: 14px 25px; border: none; border-radius: 10px;
+      background: linear-gradient(45deg, var(--accent-color-dark), var(--accent-color));
+      color: #fff; cursor: pointer; margin-top: 25px;
+      width: 100%; font-size: 1em; font-weight: 600;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 15px rgba(0, 150, 255, 0.3);
+    }
+    button#applyParams:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 6px 20px rgba(0, 150, 255, 0.5);
+    }
+
+    /* --- Media Queries para Responsividade --- */
+    @media (max-width: 600px) {
+        body { padding: 10px; }
+        .content-wrapper { padding: 10px; }
+        #dropZone { padding: 40px 20px; }
+        .main-title { font-size: 1.5rem; }
+        #playerContainer { padding: 15px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="stars"></div>
+  <div class="twinkling"></div>
+
+  <div class="content-wrapper">
+    <h1 class="main-title">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"></path></svg>
+        <span>AI-Coustics Enhancer</span>
+    </h1>
+    <div id="dropZone">Clique ou arraste um arquivo de áudio aqui</div>
+    <div id="status"></div>
+    <div id="progressContainer"><div id="progressBar"></div></div>
+    
+    <!-- Corrigido: Inicialmente, este contêiner está oculto via CSS e só será exibido em JS após o processamento. -->
+    <div id="playerContainer" style="display: none;"> 
+        <div class="audio-display">
+            <h4>Antes</h4>
+            <div class="audio-player-wrapper">
+                <button id="playBtnOriginal" class="play-button" aria-label="Play/Pause Original Audio">
+                    <svg id="playIconOriginal" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg>
+                    <svg id="pauseIconOriginal" viewBox="0 0 24 24" style="display:none;"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"></path></svg>
+                </button>
+                <div class="waveform-container">
+                    <div id="waveformOriginal"></div>
+                </div>
+            </div>
+        </div>
+        <div class="audio-display">
+            <h4>Depois</h4>
+             <div class="audio-player-wrapper">
+                <button id="playBtnEnhanced" class="play-button" aria-label="Play/Pause Enhanced Audio">
+                    <svg id="playIconEnhanced" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg>
+                    <svg id="pauseIconEnhanced" viewBox="0 0 24 24" style="display:none;"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"></path></svg>
+                </button>
+                <div class="waveform-container">
+                    <div id="waveformEnhanced"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="results-buttons">
+      <a id="downloadBtn" download="enhanced_audio.mp3">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"></path></svg>
+          <span>Baixar Áudio Melhorado</span>
+      </a>
+      <button id="resetBtn">Melhorar Novo Áudio</button>
+    </div>
+  </div>
+
+  <!-- Modal de parâmetros -->
+  <div id="paramModal">
+    <div class="modal-content">
+      <h3>Configurações de Aprimoramento</h3>
+      <div class="param-group">
+        <label for="enhancement_level">Nível de Processamento <output id="enhancement_level_value">100</output></label>
+        <input type="range" id="enhancement_level" value="100" min="0" max="100" oninput="enhancement_level_value.value = this.value">
+      </div>
+       <div class="param-group">
+        <label for="loudness_target">Loudness Target (LUFS) <output id="loudness_target_value">-14</output></label>
+        <input type="range" id="loudness_target" value="-14" min="-40" max="-5" oninput="loudness_target_value.value = this.value">
+      </div>
+      <div class="param-group">
+        <label for="true_peak">True Peak (dBTP) <output id="true_peak_value">-1</output></label>
+        <!-- CORRIGIDO: Step alterado para "1" e a função de output alterada para tratar como inteiro. -->
+        <input type="range" id="true_peak" value="-1" min="-9" max="0" step="1" oninput="true_peak_value.value = this.value">
+      </div>
+      <div class="param-group">
+        <label for="enhancement_model">Modelo</label>
+        <select id="enhancement_model">
+          <option value="LARK_V2">LARK_V2 (Recomendado)</option>
+          <option value="LARK">LARK</option>
+          <option value="FINCH">FINCH</option>
+        </select>
+      </div>
+      <div class="param-group">
+        <label for="transcode">Formato</label>
+        <select id="transcode">
+          <option value="MP3">MP3</option>
+          <option value="WAV">WAV</option>
+        </select>
+      </div>
+      <button id="applyParams">Aplicar e Processar</button>
+    </div>
+  </div>
+
+<script>
+const API_KEY = "9f1c9a6d785ae359b7e9fac9de07349c8a9c0bd2cd6f69d47ddcbcd7a01d8c48";
+const API_URL = "https://api.ai-coustics.io/v2/medias";
+
+// --- Variáveis Globais e Elementos do DOM ---
+let selectedFile = null;
+let mediaUid = null;
+let waveSurferOriginal, waveSurferEnhanced;
+
+const dropZone = document.getElementById("dropZone");
+const statusDiv = document.getElementById("status");
+const downloadBtn = document.getElementById("downloadBtn");
+const resetBtn = document.getElementById('resetBtn');
+const modal = document.getElementById("paramModal");
+const applyParamsBtn = document.getElementById("applyParams");
+const progressContainer = document.getElementById("progressContainer");
+const progressBar = document.getElementById("progressBar");
+const playerContainer = document.getElementById("playerContainer");
+
+const playBtnOriginal = document.getElementById('playBtnOriginal');
+const playIconOriginal = document.getElementById('playIconOriginal');
+const pauseIconOriginal = document.getElementById('pauseIconOriginal');
+
+const playBtnEnhanced = document.getElementById('playBtnEnhanced');
+const playIconEnhanced = document.getElementById('playIconEnhanced');
+const pauseIconEnhanced = document.getElementById('pauseIconEnhanced');
+
+// --- Funções de Inicialização das Waveforms ---
+const createWaveSurfer = (containerId) => {
+    return WaveSurfer.create({
+        container: containerId,
+        waveColor: 'rgba(255, 255, 255, 0.3)',
+        progressColor: 'var(--accent-color)',
+        barWidth: 5,
+        barRadius: 5,
+        barGap: 3,
+        height: 100,
+        cursorWidth: 2,
+        cursorColor: '#fff',
+        responsive: true,
+        normalize: true,
+    });
+}
+
+// Função utilitária para parar o outro player
+function stopOther(currentWaveSurfer) {
+    if (currentWaveSurfer === waveSurferOriginal && waveSurferEnhanced && waveSurferEnhanced.isPlaying()) {
+        waveSurferEnhanced.pause();
+    } else if (currentWaveSurfer === waveSurferEnhanced && waveSurferOriginal && waveSurferOriginal.isPlaying()) {
+        waveSurferOriginal.pause();
+    }
+}
+
+// Corrigido: Adicionado a lógica para pausar o outro áudio
+function setupWaveSurferEvents(ws, otherWs, playIcon, pauseIcon) {
+    // Adiciona uma referência do outro wavesurfer para uso no play
+    ws.otherWs = otherWs; 
+
+    ws.on('play', () => {
+        // Pausa o outro áudio quando este começar a tocar
+        if (ws.otherWs && ws.otherWs.isPlaying()) {
+            ws.otherWs.pause();
+        }
+        playIcon.style.display = 'none';
+        pauseIcon.style.display = 'block';
+    });
+    ws.on('pause', () => {
+        playIcon.style.display = 'block';
+        pauseIcon.style.display = 'none';
+    });
+    ws.on('finish', () => {
+        ws.seekTo(0);
+        playIcon.style.display = 'block';
+        pauseIcon.style.display = 'none';
+    });
+}
+
+// --- Lógica de Interação (Event Listeners) ---
+function setupEventListeners() {
+    dropZone.addEventListener("click", () => { if (!dropZone.classList.contains('processing')) triggerFileInput(); });
+    dropZone.addEventListener("dragover", e => { e.preventDefault(); if (!dropZone.classList.contains('processing')) dropZone.classList.add("hover"); });
+    dropZone.addEventListener("dragleave", () => dropZone.classList.remove("hover"));
+    dropZone.addEventListener("drop", handleFileDrop);
+    applyParamsBtn.addEventListener("click", () => { closeModal(); uploadFile(); });
+    resetBtn.addEventListener('click', resetToInitialState);
+    
+    // Controles de Play/Pause - usam a lógica em setupWaveSurferEvents
+    playBtnOriginal.addEventListener('click', () => {
+        if (waveSurferOriginal) {
+            // A função playPause do WaveSurfer dispara o evento 'play' ou 'pause', que executa a lógica em setupWaveSurferEvents
+            waveSurferOriginal.playPause();
+        }
+    });
+
+    playBtnEnhanced.addEventListener('click', () => {
+        if (waveSurferEnhanced) {
+            // A função playPause do WaveSurfer dispara o evento 'play' ou 'pause', que executa a lógica em setupWaveSurferEvents
+            waveSurferEnhanced.playPause();
+        }
+    });
+}
+
+function triggerFileInput() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "audio/*,video/*"; // Aceita áudio e vídeo
+    input.onchange = e => {
+        if (e.target.files.length > 0) {
+            selectedFile = e.target.files[0];
+            openModal();
+        }
+    };
+    input.click();
+}
+
+function handleFileDrop(e) {
+    e.preventDefault();
+    if (dropZone.classList.contains('processing')) return;
+    dropZone.classList.remove("hover");
+    if (e.dataTransfer.files.length > 0) {
+        selectedFile = e.dataTransfer.files[0];
+        openModal();
+    }
+}
+
+// --- Controle do Modal ---
+function openModal() {
+    modal.classList.remove("hidden");
+    modal.classList.add("visible");
+}
+function closeModal() {
+    modal.classList.add("hidden");
+    setTimeout(() => { modal.style.display = "none"; modal.classList.remove("visible"); }, 400);
+}
+
+// --- Lógica Principal (Upload e Processamento) ---
+function resetToInitialState() {
+    statusDiv.innerHTML = "";
+    progressContainer.style.display = "none";
+    progressBar.style.width = "0%";
+    // Garante que o container do player seja ocultado
+    playerContainer.style.display = "none"; 
+    downloadBtn.classList.remove('visible');
+    resetBtn.classList.remove('visible');
+    dropZone.classList.remove('processing');
+    dropZone.style.display = 'block';
+    if (waveSurferOriginal) waveSurferOriginal.destroy();
+    if (waveSurferEnhanced) waveSurferEnhanced.destroy();
+    selectedFile = null;
+    mediaUid = null;
+}
+
+async function uploadFile() {
+    if (!selectedFile) {
+        statusDiv.innerHTML = `<div class="error">Nenhum arquivo selecionado.</div>`;
+        return;
+    }
+    // Limpa a interface de resultados anteriores
+    playerContainer.style.display = "none";
+    downloadBtn.classList.remove('visible');
+    resetBtn.classList.remove('visible');
+    
+    dropZone.classList.add('processing');
+    statusDiv.innerText = "⏳ Enviando arquivo...";
+
+    const params = {
+        loudness_target: parseInt(document.getElementById("loudness_target").value),
+        // CORRIGIDO: true_peak alterado para parseInt para garantir que seja um inteiro, conforme exigido pela API.
+        true_peak: parseInt(document.getElementById("true_peak").value),
+        enhancement_level: parseInt(document.getElementById("enhancement_level").value),
+        enhancement_model: document.getElementById("enhancement_model").value,
+        transcode: document.getElementById("transcode").value
+    };
+
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+    formData.append("media_enhancement", JSON.stringify(params));
+
+    try {
+        const resp = await fetch(API_URL, {
+            method: "POST",
+            headers: { "X-API-Key": API_KEY },
+            body: formData
+        });
+        if (!resp.ok) {
+            const errText = await resp.text();
+            throw new Error(`Upload failed: ${resp.status} ${errText}`);
+        }
+        const data = await resp.json();
+        mediaUid = data.uid;
+        if (!mediaUid) { statusDiv.innerText = "❌ Erro no upload"; return; }
+        
+        // Carrega o áudio original na waveform
+        waveSurferOriginal = createWaveSurfer('#waveformOriginal');
+        const originalUrl = URL.createObjectURL(selectedFile);
+        waveSurferOriginal.load(originalUrl);
+        // Os eventos de play/pause serão configurados no final do processamento, 
+        // após waveSurferEnhanced ser criado, para que a referência mútua funcione.
+        // Temporariamente chamamos aqui para carregar o ícone.
+        setupWaveSurferEvents(waveSurferOriginal, null, playIconOriginal, pauseIconOriginal); 
+
+        statusDiv.innerText = "📡 Processando...";
+        progressContainer.style.display = "block";
+        simulateProgress();
+        pollStatus();
+    } catch (err) {
+        handleError(err);
+        dropZone.classList.remove('processing');
+    }
+}
+
+
+function simulateProgress() {
+    progressBar.style.width = "0%";
+    let width = 0;
+    const interval = setInterval(() => {
+        if (width >= 90 || progressBar.style.width === "100%") { clearInterval(interval); return; }
+        width += 5;
+        progressBar.style.width = width + "%";
+    }, 1000);
+}
+
+async function pollStatus() {
+    if (!mediaUid) return;
+    try {
+        const resp = await fetch(`${API_URL}/${mediaUid}/metadata`, { headers: { "X-API-Key": API_KEY } });
+        const data = await resp.json();
+        
+        if (data.enhancement_status === "COMPLETED") {
+            statusDiv.innerText = "✅ Pronto! Compare os áudios abaixo.";
+            progressBar.style.width = "100%";
+            progressContainer.style.display = "none";
+            dropZone.style.display = 'none';
+            dropZone.classList.remove('processing');
+
+            const fileResp = await fetch(`${API_URL}/${mediaUid}/file?step=ENHANCED`, { headers: { "X-API-Key": API_KEY } });
+            if (!fileResp.ok) throw new Error("Erro ao baixar áudio processado");
+            const blob = await fileResp.blob();
+            const url = window.URL.createObjectURL(blob);
+
+            // Carrega o áudio melhorado na waveform
+            waveSurferEnhanced = createWaveSurfer('#waveformEnhanced');
+            waveSurferEnhanced.load(url);
+            
+            // CONFIGURAÇÃO FINAL DOS EVENTOS DE PLAY/PAUSE/PARADA
+            // Agora que ambos existem, podemos garantir que um pausa o outro.
+            setupWaveSurferEvents(waveSurferOriginal, waveSurferEnhanced, playIconOriginal, pauseIconOriginal);
+            setupWaveSurferEvents(waveSurferEnhanced, waveSurferOriginal, playIconEnhanced, pauseIconEnhanced);
+            
+            playerContainer.style.display = "flex";
+            downloadBtn.href = url;
+            downloadBtn.download = `enhanced_${selectedFile.name.split('.')[0]}.${document.getElementById("transcode").value.toLowerCase()}`;
+            downloadBtn.classList.add('visible');
+            resetBtn.classList.add('visible');
+
+        } else if (data.enhancement_status === "FAILED") {
+            statusDiv.innerText = "❌ O processamento falhou";
+            dropZone.classList.remove('processing');
+        } else {
+            statusDiv.innerText = `⏳ Status: ${data.enhancement_status}...`;
+            setTimeout(pollStatus, 4000);
+        }
+    } catch (err) {
+        handleError(err);
+        dropZone.classList.remove('processing');
+        // Tenta novamente em caso de erro de rede
+        setTimeout(pollStatus, 5000);
+    }
+}
+
+function handleError(err) {
+    console.error(err);
+    let msg = "❌ Erro desconhecido.";
+    if (err.message.includes("413")) msg = "❌ Arquivo muito grande (máx 512MB).";
+    else if (err.message.includes("415")) msg = "❌ Formato não suportado.";
+    else if (err.message.includes("401")) msg = "❌ API Key inválida.";
+    else if (err.message.includes("403")) msg = "❌ Acesso negado.";
+    else if (err.message.includes("404")) msg = "❌ Arquivo não encontrado.";
+    statusDiv.innerHTML = `<div class="error">${msg}</div>`;
+    dropZone.classList.remove('processing');
+}
+
+// --- Inicialização ---
+document.addEventListener('DOMContentLoaded', setupEventListeners);
+</script>
+</body>
+</html>
